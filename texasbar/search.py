@@ -27,20 +27,49 @@ class Person(object):
         return '%s, %s' % (self.name, sites)
 
 
-def _get_html():
-    """"""
-    url = 'http://www.texasbar.com/AM/Template.cfm'
-    query_string='?Section=Find_a_Lawyer&Template=/CustomSource/MemberDirectory/Result_form_client.cfm'
-
-    data={'State': 'TX', 'Submitted': 1, 'PPlCityName': 'Houston', 'LawSchool': 6,
-          'ShowPrinter': 1}
+def _get_number_of_pages(url, query_string, data):
+    """Get the number of pages results will yield"""
 
     resp = requests.post(''.join([url, query_string]), data=data)
     if resp.status_code != 200:
         print 'Error getting html code: %s' % (resp.status_code)
-        return None
+        return 0
 
-    return resp.content
+    html_soup = BeautifulSoup(resp.content)
+    pages = html_soup.findAll('span', {'class': 'pagenumber'})
+
+    return int(list(pages)[-1].text)
+
+
+def _get_html():
+    """Get html results page by page"""
+
+    max_per_page = 25
+
+    url = 'http://www.texasbar.com/AM/Template.cfm'
+    query_string = '?Section=Find_a_Lawyer&Template=/CustomSource/MemberDirectory/Result_form_client.cfm'
+    data = {'State': 'TX', 'Submitted': 1, 'PPlCityName': 'Houston',
+            'LawSchool': 6, 'ShowPrinter': 1, 'MaxNumber': max_per_page}
+
+    max_page = _get_number_of_pages(url, query_string, data) + 1
+
+    for page in xrange(1, max_page):
+
+        print 'Getting page', page, 'of', max_page
+
+        next_result_idx = max_per_page * (page - 1)
+        if next_result_idx > 0:
+            # Yes, their code uses page like this...
+            data['ButtonName'] = 'Page'
+            data['Page'] = next_result_idx + 1
+            data['Next'] = next_result_idx + 1
+
+        resp = requests.post(''.join([url, query_string]), data=data)
+        if resp.status_code != 200:
+            print 'Error getting html code: %s' % (resp.status_code)
+            return
+
+        yield resp.content
 
 
 def _get_people(html):
@@ -85,25 +114,20 @@ def _get_website(person):
     return sites
 
 
-def search(output):
+def search(output, max_results=25):
     """Search for attorneys and write to output stream"""
 
     people = []
-    html_soup = BeautifulSoup(_get_html())
+    for page in _get_html():
+        html_soup = BeautifulSoup(page)
 
-    for human in _get_people(html_soup):
-        person = Person(_get_full_name(human), _get_website(human))
-        people.append(person)
+        for human in _get_people(html_soup):
+            person = Person(_get_full_name(human), _get_website(human))
+            people.append(person)
 
-    for human in people:
-        output.write('%s\n' % (human))
+        for human in people:
+            output.write('%s\n' % (human))
 
-
-# To go to a new page pass additional arguments:
-#   Next: len(names) + 1
-#   Prev: len(names) + 1
-#   MaxNumber: 25
-#   Page: 0 -- bug in their code!
 
 # FIXME: Need BeautifulSoup to parse this super ugly HTML
 # FIXME: Make sure script recognizes the number of result pages and fetches
