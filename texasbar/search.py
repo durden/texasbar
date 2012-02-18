@@ -12,6 +12,16 @@ import requests
 from BeautifulSoup import BeautifulSoup
 
 
+QUERY_URL = 'http://www.texasbar.com/AM/Template.cfm'
+QUERY_STRING = '?Section=Find_a_Lawyer&Template=/CustomSource/' \
+                'MemberDirectory/Result_form_client.cfm'
+
+
+class DataError(Exception):
+    """Raised when encountering a problem getting data from url"""
+    pass
+
+
 class Person(object):
     """person container"""
 
@@ -32,13 +42,14 @@ class Person(object):
         return '%s, %s' % (self.name, sites)
 
 
-def _get_number_of_pages(url, query_string, data):
+def _get_number_of_pages(post_data, max_per_page):
     """Get the number of pages results will yield"""
 
-    resp = requests.post(''.join([url, query_string]), data=data)
+    post_data['MaxNumber'] = max_per_page
+
+    resp = requests.post(''.join([QUERY_URL, QUERY_STRING]), data=post_data)
     if resp.status_code != 200:
-        print 'Error getting html code: %s' % (resp.status_code)
-        return 0
+        raise DataError('Error getting html code: %s' % (resp.status_code))
 
     html_soup = BeautifulSoup(resp.content)
     pages = html_soup.findAll('span', {'class': 'pagenumber'})
@@ -46,35 +57,24 @@ def _get_number_of_pages(url, query_string, data):
     return int(list(pages)[-1].text)
 
 
-def _get_html():
-    """Get html results page by page"""
+def _get_html(page, post_data, max_per_page):
+    """Get page of html results"""
 
-    max_per_page = 25
+    post_data['MaxNumber'] = max_per_page
+    next_result_idx = max_per_page * (page - 1)
 
-    url = 'http://www.texasbar.com/AM/Template.cfm'
-    query_string = '?Section=Find_a_Lawyer&Template=/CustomSource/MemberDirectory/Result_form_client.cfm'
-    data = {'State': 'TX', 'Submitted': 1, 'PPlCityName': 'Houston',
-            'LawSchool': 6, 'ShowPrinter': 1, 'MaxNumber': max_per_page}
+    if next_result_idx > 0:
 
-    max_page = _get_number_of_pages(url, query_string, data) + 1
+        # Yes, their code uses page like this...
+        post_data['ButtonName'] = 'Page'
+        post_data['Page'] = next_result_idx + 1
+        post_data['Next'] = next_result_idx + 1
 
-    for page in xrange(1, max_page):
+    resp = requests.post(''.join([QUERY_URL, QUERY_STRING]), data=post_data)
+    if resp.status_code != 200:
+        raise DataError('Error getting html code: %s' % (resp.status_code))
 
-        print 'Getting page', page, 'of', max_page
-
-        next_result_idx = max_per_page * (page - 1)
-        if next_result_idx > 0:
-            # Yes, their code uses page like this...
-            data['ButtonName'] = 'Page'
-            data['Page'] = next_result_idx + 1
-            data['Next'] = next_result_idx + 1
-
-        resp = requests.post(''.join([url, query_string]), data=data)
-        if resp.status_code != 200:
-            print 'Error getting html code: %s' % (resp.status_code)
-            return
-
-        yield resp.content
+    return resp.content
 
 
 def _get_people(html):
@@ -119,19 +119,32 @@ def _get_website(person):
     return sites
 
 
-def search(output):
-    """Search for attorneys and write to output stream"""
+def search(start_page=1, end_page=-1, max_per_page=25, verbose=False):
+    """Search for attorneys and return list"""
 
-    for page in _get_html():
-        html_soup = BeautifulSoup(page)
+    post_data = {'State': 'TX', 'Submitted': 1, 'PPlCityName': 'Houston',
+                 'LawSchool': 6, 'ShowPrinter': 1}
 
+    if end_page == -1:
+        end_page = _get_number_of_pages(post_data, max_per_page)
+
+    # Always get at least one page
+    end_page += 1
+
+    for page_num in xrange(start_page, end_page):
         people = []
+        content = _get_html(page_num, post_data, max_per_page)
+
+        if verbose:
+            print '----- Page', page_num, 'of', end_page, '-----'
+
+        html_soup = BeautifulSoup(content)
+
         for human in _get_people(html_soup):
             person = Person(_get_full_name(human), _get_website(human))
             people.append(person)
 
-        for human in people:
-            output.write('%s\n' % (human))
+        yield people
 
 
 if __name__ == "__main__":
@@ -144,6 +157,17 @@ if __name__ == "__main__":
     parser.add_argument('--log', default=sys.stdout,
                         type=argparse.FileType('w'),
                         help='Optional file to write results')
-    args = parser.parse_args()
+    parser.add_argument('-v', default=False, action='store_true',
+                        help='Verbose output of fetching results page by page')
+    parser.add_argument('--start_page', default=1, type=int,
+                        help='Starting page number for results')
+    parser.add_argument('--end_page', default=-1, type=int,
+                    help='Ending page number for results (-1 for all pages)')
+    parser.add_argument('--max_per_page', default=25, type=int,
+                        help='Max number of people per page of results')
 
-    search(args.log)
+    args = parser.parse_args()
+    for result_page in search(args.start_page, args.end_page,
+                              args.max_per_page, args.v):
+        for attorney in result_page:
+            args.log.write('%s\n' % (attorney))
