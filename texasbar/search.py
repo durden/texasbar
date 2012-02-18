@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+"""
+Module to provide a quick interface to getting law alumni from a particular
+school and living in a given city.
+"""
+
 import re
 import sys
 
@@ -114,13 +119,13 @@ def _get_website(person):
     return sites
 
 
-def search(output, max_results=25):
+def search(output):
     """Search for attorneys and write to output stream"""
 
-    people = []
     for page in _get_html():
         html_soup = BeautifulSoup(page)
 
+        people = []
         for human in _get_people(html_soup):
             person = Person(_get_full_name(human), _get_website(human))
             people.append(person)
@@ -129,9 +134,6 @@ def search(output, max_results=25):
             output.write('%s\n' % (human))
 
 
-# FIXME: Need BeautifulSoup to parse this super ugly HTML
-# FIXME: Make sure script recognizes the number of result pages and fetches
-# all of them
 if __name__ == "__main__":
     import argparse
 
