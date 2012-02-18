@@ -10,3 +10,12 @@ manually add all possible participants to contact list.  Of course, I'm a nerd
 and decided this time was wasteful, so I made a script for it.
 
 ###Usage
+
+From command line:
+    python texasbar/search.py -h
+    python texasbar/search.py
+
+From script:
+    >>> import texasbar
+    >>> for result_page in texasbar.search.search():
+    >>>     print result_page
