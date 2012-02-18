@@ -11,11 +11,13 @@ and decided this time was wasteful, so I made a script for it.
 
 ###Usage
 
-From command line:
+From command line
+
     python texasbar/search.py -h
     python texasbar/search.py
 
-From script:
+From script
+
     >>> import texasbar
     >>> for result_page in texasbar.search.search():
     >>>     print result_page
