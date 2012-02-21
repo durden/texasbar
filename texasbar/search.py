@@ -25,21 +25,39 @@ class DataError(Exception):
 class Person(object):
     """person container"""
 
-    def __init__(self, name, websites):
+    def __init__(self, name, firm, websites):
         """init"""
 
         self.name = name
+        self.firm = firm
         self.websites = websites
 
     def __str__(self):
         """str"""
 
-        sites = ''
-        for site in self.websites:
-            if site is not None:
-                sites = ' '.join([site])
+        return unicode(self).encode('utf-8')
 
-        return '%s, %s' % (self.name, sites)
+    def __unicode__(self):
+        """unicode"""
+
+        # Don't let any commas get in since we are printing as csv
+        name = re.sub(',', '.', self.name)
+        firm = re.sub(',', '.', self.firm)
+        sites = re.sub(',', '.', ' '.join(self.websites))
+
+        return '%s, %s, %s' % (name, firm, sites)
+
+    def __repr__(self):
+        """repr"""
+
+        info = {}
+        for name, val in self.__dict__.iteritems():
+            if isinstance(val, str):
+                info[name] = val.encode('ascii', 'ignore')
+            else:
+                info[name] = val
+
+        return "Person('{name}', '{firm}', {websites})".format(**info)
 
 
 def _get_number_of_pages(post_data, max_per_page):
@@ -170,4 +188,8 @@ if __name__ == "__main__":
     for result_page in search(args.start_page, args.end_page,
                               args.max_per_page, args.v):
         for attorney in result_page:
-            args.log.write('%s\n' % (attorney))
+            try:
+                args.log.write('%s\n' % (attorney))
+            except UnicodeEncodeError, err:
+                print 'Error %s' % (err)
+                print 'Skipping %s' % repr(attorney)
