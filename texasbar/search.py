@@ -122,7 +122,7 @@ def _get_full_name(person):
     return re.sub(' +', ' ', full_name)
 
 
-def _get_website(person):
+def _get_websites(person):
     """Get website from person"""
 
     sites = []
@@ -135,6 +135,12 @@ def _get_website(person):
             sites.append(href)
 
     return sites
+
+
+def _get_firm(person):
+    """Get firm name from person"""
+
+    return person.find('div', {'class': 'org'}).text
 
 
 def search(start_page=1, end_page=-1, max_per_page=25, verbose=False):
@@ -159,7 +165,8 @@ def search(start_page=1, end_page=-1, max_per_page=25, verbose=False):
         html_soup = BeautifulSoup(content)
 
         for human in _get_people(html_soup):
-            person = Person(_get_full_name(human), _get_website(human))
+            person = Person(_get_full_name(human), _get_firm(human),
+                            _get_websites(human))
             people.append(person)
 
         yield people
